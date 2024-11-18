@@ -1,151 +1,137 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
-
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+import numpy as np
+from sklearn.svm import SVC
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    ConfusionMatrixDisplay,
+    RocCurveDisplay,
+    PrecisionRecallDisplay,
+    precision_score,
+    recall_score
 )
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+def main():
+    st.title("Diabetes Prediction Web App")
+    st.sidebar.title("Diabetes Prediction Web App")
+    st.markdown("Predict whether a person has diabetes using machine learning models 🩺")
+    st.sidebar.markdown("Predict whether a person has diabetes using machine learning models 🩺")
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+    @st.cache_data
+    def load_data():
+        data = pd.read_csv('diabetes.csv')  # Pastikan file 'diabetes.csv' ada di direktori yang sama
+        return data
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+    @st.cache_data
+    def split(df):
+        y = df['Outcome']  # Kolom target
+        x = df.drop(columns=['Outcome'])
+        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=0)
+        return x_train, x_test, y_train, y_test
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+    def plot_metrics(metrics_list, model, x_test, y_test):
+        if 'Confusion Matrix' in metrics_list:
+            st.subheader("Confusion Matrix")
+            disp = ConfusionMatrixDisplay.from_estimator(
+                model, x_test, y_test,
+                display_labels=class_names,
+                cmap=plt.cm.Blues,
+                normalize=None
+            )
+            st.pyplot(disp.figure_)
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+        if 'ROC Curve' in metrics_list:
+            st.subheader("ROC Curve")
+            disp = RocCurveDisplay.from_estimator(
+                model, x_test, y_test,
+                name='ROC Curve',
+                color='darkorange'
+            )
+            st.pyplot(disp.figure_)
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+        if 'Precision-Recall Curve' in metrics_list:
+            st.subheader("Precision-Recall Curve")
+            disp = PrecisionRecallDisplay.from_estimator(
+                model, x_test, y_test,
+                name='Precision-Recall Curve',
+                color='green'
+            )
+            st.pyplot(disp.figure_)
 
-    return gdp_df
+    df = load_data()
+    class_names = ['No Diabetes', 'Diabetes']
 
-gdp_df = get_gdp_data()
+    x_train, x_test, y_train, y_test = split(df)
 
-# -----------------------------------------------------------------------------
-# Draw the actual page
+    st.sidebar.subheader("Choose Classifier")
+    classifier = st.sidebar.selectbox("Classifier", ("Support Vector Machine (SVM)", "Logistic Regression", "Random Forest"))
 
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
+    if classifier == 'Support Vector Machine (SVM)':
+        st.sidebar.subheader("Model Hyperparameters")
+        C = st.sidebar.number_input("C (Regularization parameter)", 0.01, 10.0, step=0.01, key='C')
+        kernel = st.sidebar.radio("Kernel", ("rbf", "linear"), key='kernel')
+        gamma = st.sidebar.radio("Gamma (Kernel Coefficient)", ("scale", "auto"), key='gamma')
+        metrics = st.sidebar.multiselect("What metrics to plot?", ('Confusion Matrix', 'ROC Curve', 'Precision-Recall Curve'))
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
+        if st.sidebar.button("Classify", key='classify'):
+            st.subheader("Support Vector Machine (SVM) Results")
+            model = SVC(C=C, kernel=kernel, gamma=gamma, probability=True)
+            model.fit(x_train, y_train)
+            accuracy = model.score(x_test, y_test)
+            y_pred = model.predict(x_test)
+            st.write("Accuracy:", accuracy)
+            st.write("Precision:", precision_score(y_test, y_pred))
+            st.write("Recall:", recall_score(y_test, y_pred))
+            plot_metrics(metrics, model, x_test, y_test)
 
-# Add some spacing
-''
-''
+    if classifier == 'Logistic Regression':
+        st.sidebar.subheader("Model Hyperparameters")
+        C = st.sidebar.number_input("C (Regularization parameter)", 0.01, 10.0, step=0.01, key='C_LR')
+        max_iter = st.sidebar.slider("Maximum number of iterations", 100, 500, key='max_iter')
+        metrics = st.sidebar.multiselect("What metrics to plot?", ('Confusion Matrix', 'ROC Curve', 'Precision-Recall Curve'))
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+        if st.sidebar.button("Classify", key='classify'):
+            st.subheader("Logistic Regression Results")
+            model = LogisticRegression(C=C, max_iter=max_iter)
+            model.fit(x_train, y_train)
+            accuracy = model.score(x_test, y_test)
+            y_pred = model.predict(x_test)
+            st.write("Accuracy:", accuracy)
+            st.write("Precision:", precision_score(y_test, y_pred))
+            st.write("Recall:", recall_score(y_test, y_pred))
+            plot_metrics(metrics, model, x_test, y_test)
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
+    if classifier == 'Random Forest':
+        st.sidebar.subheader("Model Hyperparameters")
+        n_estimators = st.sidebar.number_input("The number of trees in the forest", 100, 5000, step=10, key='n_estimators')
+        max_depth = st.sidebar.number_input("The maximum depth of the tree", 1, 20, step=1, key='max_depth')
+        bootstrap = st.sidebar.radio("Bootstrap samples when building trees", ('True', 'False'), key='bootstrap')
+        metrics = st.sidebar.multiselect("What metrics to plot?", ('Confusion Matrix', 'ROC Curve', 'Precision-Recall Curve'))
 
-countries = gdp_df['Country Code'].unique()
+        if st.sidebar.button("Classify", key='classify'):
+            st.subheader("Random Forest Results")
+            model = RandomForestClassifier(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                bootstrap=(bootstrap == 'True'),
+                n_jobs=-1
+            )
+            model.fit(x_train, y_train)
+            accuracy = model.score(x_test, y_test)
+            y_pred = model.predict(x_test)
+            st.write("Accuracy:", accuracy)
+            st.write("Precision:", precision_score(y_test, y_pred))
+            st.write("Recall:", recall_score(y_test, y_pred))
+            plot_metrics(metrics, model, x_test, y_test)
 
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
+    if st.sidebar.checkbox("Show raw data", False):
+        st.subheader("Pima Indians Diabetes Dataset (Classification)")
+        st.write(df)
 
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt  # Pastikan matplotlib diimpor setelah scikit-learn
+    main()
