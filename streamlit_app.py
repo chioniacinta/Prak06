@@ -10,9 +10,12 @@ from sklearn.metrics import (
     RocCurveDisplay,
     PrecisionRecallDisplay,
     precision_score,
-    recall_score
+    recall_score,
+    f1_score,
+    roc_auc_score
 )
-
+from sklearn.preprocessing import StandardScaler
+from imblearn.over_sampling import SMOTE  # To balance the classes
 
 def main():
     st.title("Diabetes Prediction Web App")
@@ -22,14 +25,19 @@ def main():
 
     @st.cache_data
     def load_data():
-        data = pd.read_csv('diabetes.csv')  # Pastikan file 'diabetes.csv' ada di direktori yang sama
+        data = pd.read_csv('diabetes.csv')  # Ensure 'diabetes.csv' file is in the same directory
         return data
 
     @st.cache_data
     def split(df):
-        y = df['Outcome']  # Kolom target
+        y = df['Outcome']  # Target column
         x = df.drop(columns=['Outcome'])
         x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=0)
+        
+        # Balance the dataset using SMOTE (Synthetic Minority Over-sampling Technique)
+        smote = SMOTE(random_state=0)
+        x_train, y_train = smote.fit_resample(x_train, y_train)
+        
         return x_train, x_test, y_train, y_test
 
     def plot_metrics(metrics_list, model, x_test, y_test):
@@ -69,6 +77,11 @@ def main():
     st.sidebar.subheader("Choose Classifier")
     classifier = st.sidebar.selectbox("Classifier", ("Support Vector Machine (SVM)", "Logistic Regression", "Random Forest"))
 
+    # Feature scaling (important for SVM and Logistic Regression)
+    scaler = StandardScaler()
+    x_train = scaler.fit_transform(x_train)
+    x_test = scaler.transform(x_test)
+
     if classifier == 'Support Vector Machine (SVM)':
         st.sidebar.subheader("Model Hyperparameters")
         C = st.sidebar.number_input("C (Regularization parameter)", 0.01, 10.0, step=0.01, key='C')
@@ -80,11 +93,15 @@ def main():
             st.subheader("Support Vector Machine (SVM) Results")
             model = SVC(C=C, kernel=kernel, gamma=gamma, probability=True)
             model.fit(x_train, y_train)
-            accuracy = model.score(x_test, y_test)
             y_pred = model.predict(x_test)
-            st.write("Accuracy:", accuracy)
-            st.write("Precision:", precision_score(y_test, y_pred))
-            st.write("Recall:", recall_score(y_test, y_pred))
+            accuracy = model.score(x_test, y_test)
+            
+            # Metrics
+            st.write("Accuracy:", round(accuracy, 2))
+            st.write("Precision:", round(precision_score(y_test, y_pred), 2))
+            st.write("Recall:", round(recall_score(y_test, y_pred), 2))
+            st.write("F1 Score:", round(f1_score(y_test, y_pred), 2))
+            st.write("ROC AUC Score:", round(roc_auc_score(y_test, model.predict_proba(x_test)[:, 1]), 2))
             plot_metrics(metrics, model, x_test, y_test)
 
     if classifier == 'Logistic Regression':
@@ -97,11 +114,15 @@ def main():
             st.subheader("Logistic Regression Results")
             model = LogisticRegression(C=C, max_iter=max_iter)
             model.fit(x_train, y_train)
-            accuracy = model.score(x_test, y_test)
             y_pred = model.predict(x_test)
-            st.write("Accuracy:", accuracy)
-            st.write("Precision:", precision_score(y_test, y_pred))
-            st.write("Recall:", recall_score(y_test, y_pred))
+            accuracy = model.score(x_test, y_test)
+
+            # Metrics
+            st.write("Accuracy:", round(accuracy, 2))
+            st.write("Precision:", round(precision_score(y_test, y_pred), 2))
+            st.write("Recall:", round(recall_score(y_test, y_pred), 2))
+            st.write("F1 Score:", round(f1_score(y_test, y_pred), 2))
+            st.write("ROC AUC Score:", round(roc_auc_score(y_test, model.predict_proba(x_test)[:, 1]), 2))
             plot_metrics(metrics, model, x_test, y_test)
 
     if classifier == 'Random Forest':
@@ -120,18 +141,21 @@ def main():
                 n_jobs=-1
             )
             model.fit(x_train, y_train)
-            accuracy = model.score(x_test, y_test)
             y_pred = model.predict(x_test)
-            st.write("Accuracy:", accuracy)
-            st.write("Precision:", precision_score(y_test, y_pred))
-            st.write("Recall:", recall_score(y_test, y_pred))
+            accuracy = model.score(x_test, y_test)
+
+            # Metrics
+            st.write("Accuracy:", round(accuracy, 2))
+            st.write("Precision:", round(precision_score(y_test, y_pred), 2))
+            st.write("Recall:", round(recall_score(y_test, y_pred), 2))
+            st.write("F1 Score:", round(f1_score(y_test, y_pred), 2))
+            st.write("ROC AUC Score:", round(roc_auc_score(y_test, model.predict_proba(x_test)[:, 1]), 2))
             plot_metrics(metrics, model, x_test, y_test)
 
     if st.sidebar.checkbox("Show raw data", False):
         st.subheader("Pima Indians Diabetes Dataset (Classification)")
         st.write(df)
 
-
 if __name__ == '__main__':
-    import matplotlib.pyplot as plt  # Pastikan matplotlib diimpor setelah scikit-learn
+    import matplotlib.pyplot as plt  # Make sure matplotlib is imported after scikit-learn
     main()
